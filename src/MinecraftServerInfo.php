@@ -5,10 +5,13 @@ require_once 'core/MinecraftServerInfoDns.php';
 require_once 'core/MinecraftServerInfoPacket.php';
 
 /**
- * Description of MinecraftServerInfo - TODO
- *
+ * MinecraftServerInfo
+ * Class to query information from a Minecraft server via TCP
+ * 
  * @author Patrick Weiss <info@tekgator.com> http://tekgator.com
  * @copyright (c) 2015, Patrick Weiss
+ * @link http://wiki.vg/Server_List_Ping Protocol description
+ * @version 1.1
  * 
  */
 class MinecraftServerInfo {
@@ -19,7 +22,11 @@ class MinecraftServerInfo {
     
     private $serverInfo = array();
     
-    
+
+    /**
+     * @param string $hostname Description
+     * 
+     */
     public function __construct($hostname = '') {
         $this->mcDns = new MinecraftServerInfoDns($hostname);
     }
@@ -28,11 +35,17 @@ class MinecraftServerInfo {
         $this->disconnectSocket();
     }
     
-    /*
-     * @see http://wiki.vg/Server_List_Ping
+    /**
+     * Connect to the minecraft server passed within 
+     * the constructor and query the data
+     * 
+     * @return bool returns true if server is online or false
+     *              if offline or error occured (check last error)
+     * 
      */
     public function Query() {
         $this->serverInfo = array();
+        $this->serverInfo['online'] = false;
         
         do {
             /* 1.) prepare handshake message (do before hand to not 
@@ -64,23 +77,32 @@ class MinecraftServerInfo {
         } while(true);
         
         $this->disconnectSocket();
+        
+        return $this->serverInfo['online'];
     }
     
-    /*
-     * all properties are data type as defined below 
+    /**
+     * all properties are data type as defined below
      * if existing, otherwise bool false is returned
+     * (property names are NOT case sensitive, so write them as you like)
      * 
-     * @property-read string    hostName    Minecraft Server DNS Adress
-     * @property-read string    ipAdress    Minecraft Server IP Adress
-     * @property-read int       port        Minecraft Server Port
-     * @property-read int       ping        Latency time to Minecraft server in ms
-     * 
-     * 
-     * 
-     * 
-     * 
-     * @property-read string    json        The undecode JSON string receive from the Minecraft server
-     * @property-read string    lastError   Contains the last error occured during DNS resolving or server query
+     * @param string    'hostName'        Server DNS Adress
+     * @param string    'ipAdress'        Server IP Adress
+     * @param int       'port'            Server Port
+     * @param int       'ping'            Latency time to server in ms
+     * @param bool      'online'          Server is online (true) or offline (false)
+     * @param string    'serversoftware'  Serversoftware in use (e.g. Vanilla, Craftbukkit, ForgeMod, etc.)
+     * @param string    'version'         Server version (e.g. 1.8)
+     * @param int       'protocolversion' Server protocol version
+     * @param string    'motd'            Message of the day / Description (careful can contain special character -> filter)
+     * @param int       'playermax'       Max. count of player possible on the server
+     * @param int       'playeronline'    Current count of player online on the server
+     * @param array     'playerids'       Array of online player names ('name') and UUID ('id') NOTE: returns a portion of online players only
+     * @param string    'favicon'         Base64 string of the server icon (can be used within src attribute of img tag)
+     * @param string    'modtype'         Type of mods the server is implementing (currently only FML?!)
+     * @param array     'modlist'         Mods the server is using with its id ('modid') and version ('version') (currently only Forge?!)
+     * @param string    'json'            The undecode JSON string receive from the Minecraft server
+     * @param string    'lastError'       Contains the last error occured during DNS resolving or server query
      * 
      */
     public function Get($name) {
@@ -88,7 +110,7 @@ class MinecraftServerInfo {
         $retVal = false;
         
         if (!empty($accessKey) && array_key_exists($accessKey, $this->serverInfo)) {
-            $retVal = $this->connInfo[$accessKey];
+            $retVal = $this->serverInfo[$accessKey];
         } else {
             if ($accessKey == 'hostname' ||
                 $accessKey == 'ipadress' ||
@@ -191,15 +213,62 @@ class MinecraftServerInfo {
     private function decodeJson() {
     
         $decodedJson = json_decode($this->serverInfo['json'], true);
-        
+    
         if (is_string($decodedJson)) {
             /* server returned simple string which is an error meesage (e.g. server is starting up) */
             $this->serverInfo['lasterror'] = $decodedJson;
         } elseif (is_array($decodedJson)) {
+            if (array_key_exists('version', $decodedJson)) {            
+                /* if the version key exists the server is definitly online */
+                $this->serverInfo['online'] = true; 
+                
+                if (array_key_exists('name', $decodedJson['version'])) {            
+                    $this->extractVersion($decodedJson['version']['name'], 
+                                          $this->serverInfo['serversoftware'], 
+                                          $this->serverInfo['version']);
+                }
+                
+                if (array_key_exists('protocol', $decodedJson['version'])) {            
+                    $this->serverInfo['protocolversion'] = $decodedJson['version']['protocol'];
+                }
+            }
+            
+            if (array_key_exists('description', $decodedJson)) {
+                $this->serverInfo['motd'] = $decodedJson['description'];
+            }
+            
+            if (array_key_exists('players', $decodedJson)) {
+                if (array_key_exists('max', $decodedJson['players'])) {            
+                    $this->serverInfo['playermax'] = $decodedJson['players']['max']; 
+                }
+                
+                if (array_key_exists('online', $decodedJson['players'])) {            
+                    $this->serverInfo['playeronline'] = $decodedJson['players']['online']; 
+                }
+                
+                if (array_key_exists('sample', $decodedJson['players'])) {            
+                    $this->serverInfo['playerids'] = $decodedJson['players']['sample'];
+                }
+                
+            }
+            
+            if (array_key_exists('favicon', $decodedJson)) {
+                $this->serverInfo['favicon'] = $decodedJson['favicon'];
+            }
 
-            
-            
-            
+            if (array_key_exists('modinfo', $decodedJson)) {
+                if (array_key_exists('type', $decodedJson['modinfo'])) {
+                    $this->serverInfo['modtype'] = $decodedJson['modinfo']['type'];
+                    
+                    if ($this->serverInfo['modtype'] == 'FML') {
+                        $this->serverInfo['serversoftware'] = 'ForgeMod';
+                    }
+                }
+                
+                if (array_key_exists('modList', $decodedJson['modinfo'])) {
+                    $this->serverInfo['modlist'] = $decodedJson['modinfo']['modList'];
+                }
+            }
         } else {
             $this->serverInfo['lasterror'] = 'JSON stream cannot be decoded.' .
                                              ' /errorNo='  . json_last_error() .
@@ -208,5 +277,25 @@ class MinecraftServerInfo {
         
     }
         
+    private function extractVersion($versionStr, &$serverSoftware, &$version) {
+        $serverSoftware = 'Vanilla';
+        $version = $versionStr;
+        
+        for ($i = 0; $i < strlen($versionStr); $i++) {
+            if (is_numeric($versionStr[$i])) {
+                if ($i == 0) {
+                    /* apparently the string contains only the version
+                     * so it's most likly a vanilla server, anyways later on
+                     * is a determination if the mod tree 
+                     * exists so it may a ForgeMod server */
+                    $version = $versionStr;
+                } else {
+                    $serverSoftware = trim(substr($versionStr, 0, $i));
+                    $version = trim(substr($versionStr, $i));
+                }
+                break;
+            }
+        }
+    }
     
 }
