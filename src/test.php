@@ -2,46 +2,59 @@
 
 require_once 'MinecraftServerInfo.php';
 
-$mcInfo = new MinecraftServerInfo('MC.FunServerGer.de');
+//$mcInfo = new MinecraftServerInfo('MC.FunServerGer.de'); // 1.5.2 server
+//$mcInfo = new MinecraftServerInfo('s.hexxit.de:25585'); // 1.5.2 server
+//$mcInfo = new MinecraftServerInfo('kadcon.de'); // Bungecoord Server (Spigot)
+//$mcInfo = new MinecraftServerInfo('78.143.2.54'); // 1.7.10 spigot
+//$mcInfo = new MinecraftServerInfo('85.190.132.83'); // 1.8 spigot
+$mcInfo = new MinecraftServerInfo('mc.craftymynes.com'); // 1.8.3 vanilla
+//$mcInfo = new MinecraftServerInfo('play.skylarkpvp.net'); // 1.7.10 vanilla
+
+
 $mcInfo->Query();
 
-if ($mcInfo->Get('favicon') !== false) {
-    echo '<div><img src="' . $mcInfo->Get('favicon') . '"</div>';
+if ($mcInfo->getFavIcon()) {
+    echo '<div><img src="' . $mcInfo->getFavIcon() . '"</div>';
 }
 
-if ($mcInfo->Get('lastError') !== false) {
-    echo '<div>Last error: '        . $mcInfo->Get('lastError')         . '</div>';
+if ($mcInfo->getLastError() !== false) {
+    echo '<div>Last error: '        . $mcInfo->getLastError()           . '</div>';
 }
 
-echo '<div>Hostname: '          . $mcInfo->Get('hostName')          . '</div>';
-echo '<div>IP Adress: '         . $mcInfo->Get('ipAdress')          . '</div>';
-echo '<div>Port: '              . $mcInfo->Get('port')              . '</div>';
-echo '<div>Ping: '              . $mcInfo->Get('ping')              . '</div>';
-echo '<div>Online: '            . $mcInfo->Get('online')            . '</div>';
+echo '<div>Hostname: '          . $mcInfo->getHostName()            . '</div>';
+echo '<div>IP Adress: '         . $mcInfo->getIPAdress()            . '</div>';
+echo '<div>Port: '              . $mcInfo->getPort()                . '</div>';
+echo '<div>Latency: '           . $mcInfo->getLatency()             . '</div>';
+echo '<div>Online: '            . $mcInfo->isOnline()               . '</div>';
 
-if ($mcInfo->Get('online') === true) {
+if ($mcInfo->isOnline() === true) {
     
-    echo '<div>Software: '          . $mcInfo->Get('serversoftware')    . '</div>';
-    echo '<div>Version: '           . $mcInfo->Get('version')           . '</div>';
-    echo '<div>Protocol: '          . $mcInfo->Get('protocolversion')   . '</div>';
-    echo '<div>MOTD: '              . $mcInfo->Get('motd')              . '</div>';
-    echo '<div>Max. players: '      . $mcInfo->Get('playermax')         . '</div>';
-    echo '<div>Online players: '    . $mcInfo->Get('playeronline')      . '</div>';
+    echo '<div>Version: '           . $mcInfo->getVersion()             . '</div>';
+    echo '<div>Protocol: '          . $mcInfo->getProtocolVersion()     . '</div>';
+    echo '<div>MOTD: '              . $mcInfo->getMotd()                . '</div>';
+    echo '<div>Max. players: '      . $mcInfo->getMaxPlayerCount()      . '</div>';
+    echo '<div>Online players: '    . $mcInfo->getOnlinePlayerCount()   . '</div>';
 
-    if (is_array($mcInfo->Get('playerids'))) {
+    if (is_array($mcInfo->getOnlinePlayers())) {
         echo '<div><ul>';
-        foreach ($mcInfo->Get('playerids') as $player) {
+/*
+        foreach ($mcInfo->getOnlinePlayers(true) as $player) {
             echo '<li>' . $player['name'] . ' (' . $player['id'] . ')</li>';
         }
+*/ 
+        foreach ($mcInfo->getOnlinePlayers() as $player) {
+            echo '<li>' . $player . '</li>';
+        }
+
         echo'</ul></div>';
     }
 
-    if ($mcInfo->Get('modtype') != false) {
-        echo '<div>Mod type: '    . $mcInfo->Get('modtype')       . '</div>';
+    if ($mcInfo->getModType() != false) {
+        echo '<div>Mod type: '    . $mcInfo->getModType()              . '</div>';
 
-        if (is_array($mcInfo->Get('modlist'))) {
+        if (is_array($mcInfo->getModList())) {
             echo '<div><ul>';
-            foreach ($mcInfo->Get('modlist') as $mod) {
+            foreach ($mcInfo->getModList() as $mod) {
                 echo '<li>' . $mod['modid'] . ' (' . $mod['version'] . ')</li>';
             }
             echo'</ul></div>';
@@ -50,9 +63,16 @@ if ($mcInfo->Get('online') === true) {
     
     echo '<br /><br /><br />';
     
+    echo '<div><h1>Decoded JSON array from server response</h1></div>';
     echo '<div><pre>';
-    echo print_r(json_decode($mcInfo->Get('json'), true));
+    echo print_r($mcInfo->getResponse(), true);
     echo '</pre></div>';
 
+    echo '<br /><br /><br />';    
+    
+    echo '<div><h1>Raw data from server</h1></div>';
+    echo '<div>' . $mcInfo->getResponse(false) . '</div>';
+
+    
     
 }

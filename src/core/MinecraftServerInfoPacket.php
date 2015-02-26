@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Description of MinecraftServerInfoPacket - TODO
+ * MinecraftServerInfoPacket
  *
  * @author Patrick Weiss <info@tekgator.com> http://tekgator.com
  * @copyright (c) 2015, Patrick Weiss

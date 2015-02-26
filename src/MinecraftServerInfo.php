@@ -2,300 +2,269 @@
 
 require_once 'core/MinecraftServerInfoConfig.php';
 require_once 'core/MinecraftServerInfoDns.php';
-require_once 'core/MinecraftServerInfoPacket.php';
+require_once 'core/MinecraftServerInfoTcpPing.php';
 
 /**
  * MinecraftServerInfo
- * Class to query information from a Minecraft server via TCP
+ * Class to query information from a Minecraft server
  * 
  * @author Patrick Weiss <info@tekgator.com> http://tekgator.com
  * @copyright (c) 2015, Patrick Weiss
  * @link http://wiki.vg/Server_List_Ping Protocol description
- * @version 1.1
+ * @version 1.2
  * 
  */
 class MinecraftServerInfo {
     
-    private $mcDns = false;
-    private $mcConn = false;
-    private $connTime = 0;
+    private $mcDns = null;
+    private $serverInfo = ['isOnline'           => false,
+                           'response'           => '',
+                           'decodedResponse'    => '',
+                           'latency'            => 0,
+                           'lastError'          => 'server not queried'];
+
     
-    private $serverInfo = array();
+    /**
+     * @param string $hostname Hostname:Port of minecraft server
+     * @param string $port     Port of minecraft server 
+     */
+    public function __construct($hostname = '', $port = 0) {
+        $this->mcDns = new MinecraftServerInfoDns($hostname, $port);
+    }
     
+    /**
+     * query or refresh minecraft server info
+     * @return bool returns whether server is on/offline
+     */
+    public function query() {
+        $mcQuery = new MinecraftServerInfoTcpPing($this->mcDns);
+        
+        $this->serverInfo = ['isOnline'     => $mcQuery->isOnline(),
+                             'response'     => $mcQuery->getResponse(),
+                             'latency'      => $mcQuery->getLatency(),
+                             'lastError'    => empty($mcQuery->getLastError()) ? false : $mcQuery->getLastError()];
+        
+        $this->serverInfo['decodedResponse'] = json_decode($mcQuery->GetResponse(), true);
+        if (is_string($this->serverInfo['decodedResponse'])) {
+            $this->serverInfo['isOnline'] = false;
+            $this->serverInfo['lastError'] = $this->serverInfo['decodedResponse'];
+        } elseif (!is_array($this->serverInfo['decodedResponse'])) {
+            $this->serverInfo['isOnline'] = false;
+            $this->serverInfo['lastError'] = 'Error occured while decoding server response.' .
+                    ' /errNo=' . json_last_error() .
+                    ' /errMsg=' . json_last_error_msg();
+        }
+        
+        return $this->isOnline();
+    }
 
     /**
-     * @param string $hostname Description
-     * 
+     * @param bool $decodedVersion Whether to return the raw or decoded version
+     * @return string|array|bool Returns the response from the server
      */
-    public function __construct($hostname = '') {
-        $this->mcDns = new MinecraftServerInfoDns($hostname);
-    }
-    
-    public function __destruct() {
-        $this->disconnectSocket();
-    }
-    
-    /**
-     * Connect to the minecraft server passed within 
-     * the constructor and query the data
-     * 
-     * @return bool returns true if server is online or false
-     *              if offline or error occured (check last error)
-     * 
-     */
-    public function Query() {
-        $this->serverInfo = array();
-        $this->serverInfo['online'] = false;
-        
-        do {
-            /* 1.) prepare handshake message (do before hand to not 
-             *     increase latency time measurement to server)
-             */
-            $handshakePacket = MinecraftServerInfoPacket::buildHandshakeMessage(
-                    $this->mcDns->Get('ipadress'),
-                    $this->mcDns->Get('port'),
-                    MinecraftServerInfoConfig::MINECRAFT_PROTOCOL_VERSION);
-            
-            /* 2.) prepare status request message */
-            $statusRequestPacket = MinecraftServerInfoPacket::buildStatusRequestMessage();
-            
-
-            /* 3.) connect to minecraft server */
-            if (!$this->connectSocket()) { break; }
-            
-            /* 4.) send handshake and status request message */
-            if (!$this->writeSocket($handshakePacket) ||
-                !$this->writeSocket($statusRequestPacket)) { break; }
-            
-            /* 5.) evaluate response and ping */
-            if (!$this->unpackResponse()) { break; }
-                
-            /* 6.) decode JSON string into server info array */
-            if (!$this->decodeJson()) { break; }
-            
-            break; /* always exit fake loop */
-        } while(true);
-        
-        $this->disconnectSocket();
-        
-        return $this->serverInfo['online'];
-    }
-    
-    /**
-     * all properties are data type as defined below
-     * if existing, otherwise bool false is returned
-     * (property names are NOT case sensitive, so write them as you like)
-     * 
-     * @param string    'hostName'        Server DNS Adress
-     * @param string    'ipAdress'        Server IP Adress
-     * @param int       'port'            Server Port
-     * @param int       'ping'            Latency time to server in ms
-     * @param bool      'online'          Server is online (true) or offline (false)
-     * @param string    'serversoftware'  Serversoftware in use (e.g. Vanilla, Craftbukkit, ForgeMod, etc.)
-     * @param string    'version'         Server version (e.g. 1.8)
-     * @param int       'protocolversion' Server protocol version
-     * @param string    'motd'            Message of the day / Description (careful can contain special character -> filter)
-     * @param int       'playermax'       Max. count of player possible on the server
-     * @param int       'playeronline'    Current count of player online on the server
-     * @param array     'playerids'       Array of online player names ('name') and UUID ('id') NOTE: returns a portion of online players only
-     * @param string    'favicon'         Base64 string of the server icon (can be used within src attribute of img tag)
-     * @param string    'modtype'         Type of mods the server is implementing (currently only FML?!)
-     * @param array     'modlist'         Mods the server is using with its id ('modid') and version ('version') (currently only Forge?!)
-     * @param string    'json'            The undecode JSON string receive from the Minecraft server
-     * @param string    'lastError'       Contains the last error occured during DNS resolving or server query
-     * 
-     */
-    public function Get($name) {
-        $accessKey = strtolower($name);
+    public function getResponse($decodedVersion = true) {
         $retVal = false;
-        
-        if (!empty($accessKey) && array_key_exists($accessKey, $this->serverInfo)) {
-            $retVal = $this->serverInfo[$accessKey];
-        } else {
-            if ($accessKey == 'hostname' ||
-                $accessKey == 'ipadress' ||
-                $accessKey == 'port') {
-                $retVal = $this->mcDns->Get($name);
-            }
-        }
-        
-        return $retVal;
-    }
-    
-    
-    private function connectSocket() {
-        
-        if ($this->mcConn === false) {
-            $this->connTime = microtime(true);
-            $this->mcConn = stream_socket_client('tcp://' . $this->mcDns->Get('ipadress') . ':' . $this->mcDns->Get('port'), 
-                                                 $errNo, 
-                                                 $errMsg, 
-                                                 MinecraftServerInfoConfig::TCP_TIMEOUT_SECONDS);
-            
-            if ($this->mcConn) {
-                stream_set_timeout($this->mcConn, MinecraftServerInfoConfig::TCP_TIMEOUT_SECONDS);
+        if ($this->isOnline()) {
+            if ($decodedVersion && array_key_exists('decodedResponse', $this->serverInfo)) {
+                $retVal = $this->serverInfo['decodedResponse'];
             } else {
-                $this->serverInfo['lasterror'] = 'Error connecting to client' .
-                                                 ' /hostName=' . $this->mcDns->Get('hostname') .
-                                                 ' /ipAdress=' . $this->mcDns->Get('ipadress') .
-                                                 ' /port='     . $this->mcDns->Get('port') .
-                                                 ' /errorNo='  . $errNo .
-                                                 ' /errorMsg=' . $errMsg;
-                $this->disconnect();                
+                $retVal = $this->serverInfo['response'];
             }
         }
-        
-        return ($this->mcConn != false);
+        return $retVal;
+    }    
+    
+    /**
+     * @return string Server DNS Adress
+     */
+    public function getHostName() {
+        return $this->mcDns->getHostName();
     }
-    
-    private function writeSocket($data) {
-        return fwrite($this->mcConn, $data);
-    }
-    
-    private function disconnectSocket() {
-        if ($this->mcConn != false) {
-            fclose($this->mcConn);
-            $this->mcConn = false;
-        }
         
-        $this->connTime = 0;
+    /**
+     * @return string Server IP Adress
+     */
+    public function getIPAdress() {
+        return $this->mcDns->getIPAdress();
     }
-    
-    
-    private function unpackResponse() {
-        $response = '';
-        
-        do {
-            /* first part of respone is the length of the packet */
-            if (MinecraftServerInfoPacket::unpackVarInt($this->mcConn, $response) === false) {
-                $this->serverInfo['lasterror'] = 'Invalid response to handshake and status messagereceived from Minecraft server';
-                break;
-            }
-            
-            /* if first part of answer has been received we can set the latency */
-            $this->serverInfo['ping'] = round((microtime(true) - $this->connTime) *1000);
 
-            /* second part of respone is the packet ID */
-            if (MinecraftServerInfoPacket::unpackVarInt($this->mcConn, $response) === false) {
-                $this->serverInfo['lasterror'] = 'Invalid packet ID received from Minecraft server';
-                break;
-            }
+    /**
+     * @return string Server IP Adress
+     */
+    public function getPort() {
+        return $this->mcDns->getPort();
+    }
 
-            /* third part contains the length of the following JSON string */
-            $jsonLength = MinecraftServerInfoPacket::unpackVarInt($this->mcConn, $response);
-            if ($jsonLength === false || $jsonLength === 0) {
-                $this->serverInfo['lasterror'] = 'Invalid JSON stream received from Minecraft server';
-                break;
-            }
-            
-            $jsonStr = '';
-            $readLen = 0;
-            do {
-                /* reading length has to be determined, because if we read more than 
-                 * available data we run into timeout or until server send the next data stream */
-                $readLen = min(2048, $jsonLength - strlen($jsonStr));
-                
-                /* exit loop if no more data has been 
-                 * found or the whole JSON string has been read */
-                if ($readLen <= 0 || feof($this->mcConn)) { break; }
-                
-                $jsonStr .= fread($this->mcConn, $readLen);
-            } while(true);
-            
-            $this->serverInfo['json'] = $jsonStr;
-            
-            break; /* always exit fake loop */
-        } while(true);
-        
-        return array_key_exists('json', $this->serverInfo) && !empty($this->serverInfo['json']);
+    /**
+     * @return bool Server is on/offline
+     */
+    public function isOnline() {
+        return $this->serverInfo['isOnline'];
+    }
+
+    /**
+     * @return int latency time to server in ms
+     */
+    public function getLatency() {
+        return $this->serverInfo['latency'];
     }
     
-    private function decodeJson() {
+    /**
+     * @return string last error occured during querying 
+     *                the server or decoding the data received
+     */
+    public function getLastError() {
+        return $this->serverInfo['lastError'];
+    }
     
-        $decodedJson = json_decode($this->serverInfo['json'], true);
-    
-        if (is_string($decodedJson)) {
-            /* server returned simple string which is an error meesage (e.g. server is starting up) */
-            $this->serverInfo['lasterror'] = $decodedJson;
-        } elseif (is_array($decodedJson)) {
-            if (array_key_exists('version', $decodedJson)) {            
-                /* if the version key exists the server is definitly online */
-                $this->serverInfo['online'] = true; 
+    /**
+     * @return string|bool Server software and version (e.g. Vanilla 1.8)
+     */
+    public function getVersion() {
+        $retVal = false;
+        if ($this->isOnline()) {
+            if (array_key_exists('version', $this->serverInfo['decodedResponse']) && 
+                array_key_exists('name', $this->serverInfo['decodedResponse']['version'])) {            
+                $retVal = $this->serverInfo['decodedResponse']['version']['name'];
                 
-                if (array_key_exists('name', $decodedJson['version'])) {            
-                    $this->extractVersion($decodedJson['version']['name'], 
-                                          $this->serverInfo['serversoftware'], 
-                                          $this->serverInfo['version']);
-                }
-                
-                if (array_key_exists('protocol', $decodedJson['version'])) {            
-                    $this->serverInfo['protocolversion'] = $decodedJson['version']['protocol'];
-                }
-            }
-            
-            if (array_key_exists('description', $decodedJson)) {
-                $this->serverInfo['motd'] = $decodedJson['description'];
-            }
-            
-            if (array_key_exists('players', $decodedJson)) {
-                if (array_key_exists('max', $decodedJson['players'])) {            
-                    $this->serverInfo['playermax'] = $decodedJson['players']['max']; 
-                }
-                
-                if (array_key_exists('online', $decodedJson['players'])) {            
-                    $this->serverInfo['playeronline'] = $decodedJson['players']['online']; 
-                }
-                
-                if (array_key_exists('sample', $decodedJson['players'])) {            
-                    $this->serverInfo['playerids'] = $decodedJson['players']['sample'];
-                }
-                
-            }
-            
-            if (array_key_exists('favicon', $decodedJson)) {
-                $this->serverInfo['favicon'] = $decodedJson['favicon'];
-            }
-
-            if (array_key_exists('modinfo', $decodedJson)) {
-                if (array_key_exists('type', $decodedJson['modinfo'])) {
-                    $this->serverInfo['modtype'] = $decodedJson['modinfo']['type'];
-                    
-                    if ($this->serverInfo['modtype'] == 'FML') {
-                        $this->serverInfo['serversoftware'] = 'ForgeMod';
+                if (is_numeric($retVal[0])) {
+                    if ($this->getModType() == 'FML') {
+                        $retVal = 'ForgeMod ' . $retVal;
+                    } else {
+                        $retVal = 'Vanilla ' . $retVal;
                     }
                 }
-                
-                if (array_key_exists('modList', $decodedJson['modinfo'])) {
-                    $this->serverInfo['modlist'] = $decodedJson['modinfo']['modList'];
-                }
-            }
-        } else {
-            $this->serverInfo['lasterror'] = 'JSON stream cannot be decoded.' .
-                                             ' /errorNo='  . json_last_error() .
-                                             ' /errorMsg=' . json_last_error_msg();
-        }
-        
-    }
-        
-    private function extractVersion($versionStr, &$serverSoftware, &$version) {
-        $serverSoftware = 'Vanilla';
-        $version = $versionStr;
-        
-        for ($i = 0; $i < strlen($versionStr); $i++) {
-            if (is_numeric($versionStr[$i])) {
-                if ($i == 0) {
-                    /* apparently the string contains only the version
-                     * so it's most likly a vanilla server, anyways later on
-                     * is a determination if the mod tree 
-                     * exists so it may a ForgeMod server */
-                    $version = $versionStr;
-                } else {
-                    $serverSoftware = trim(substr($versionStr, 0, $i));
-                    $version = trim(substr($versionStr, $i));
-                }
-                break;
             }
         }
-    }
+        return $retVal;
+    }    
+
+    /**
+     * @return string|bool Server protocol version
+     */
+    public function getProtocolVersion() {
+        $retVal = false;
+        if ($this->isOnline()) {
+            if (array_key_exists('version', $this->serverInfo['decodedResponse']) && 
+                array_key_exists('protocol', $this->serverInfo['decodedResponse']['version'])) {            
+                $retVal = $this->serverInfo['decodedResponse']['version']['protocol'];
+            }
+        }
+        return $retVal;
+    }    
     
+    /**
+     * @return string|bool  Message of the day / Description
+     */
+    public function getMotd() {
+        $retVal = false;
+        if ($this->isOnline()) {
+            if (array_key_exists('description', $this->serverInfo['decodedResponse'])) {            
+                $retVal = '';
+                if (is_array($this->serverInfo['decodedResponse']['description'])) {
+                    foreach($this->serverInfo['decodedResponse']['description'] as $description) {
+                        $retVal .= $description;
+                    }
+                } else {
+                    $retVal = $this->serverInfo['decodedResponse']['description'];
+                }
+            }
+        }
+        return $retVal;
+    }     
+   
+    /**
+     * @return int|bool Max. count of player possible on the server
+     */
+    public function getMaxPlayerCount() {
+        $retVal = false;
+        if ($this->isOnline()) {
+            if (array_key_exists('players', $this->serverInfo['decodedResponse']) && 
+                array_key_exists('max', $this->serverInfo['decodedResponse']['players'])) {            
+                $retVal = $this->serverInfo['decodedResponse']['players']['max'];
+            }
+        }
+        return $retVal;
+    }     
+    
+    /**
+     * @return int|bool Max. Current count of player online on the server
+     */
+    public function getOnlinePlayerCount() {
+        $retVal = false;
+        if ($this->isOnline()) {
+            if (array_key_exists('players', $this->serverInfo['decodedResponse']) && 
+                array_key_exists('online', $this->serverInfo['decodedResponse']['players'])) {            
+                $retVal = $this->serverInfo['decodedResponse']['players']['online'];
+            }
+        }
+        return $retVal;
+    }       
+
+    /**
+     * NOTE: returns a portion of online players only
+     * @param bool $includeUUID whether the UUID should be included
+     * @return array|bool Array of online player names ('name') and UUID ('id') 
+     */
+    public function getOnlinePlayers($includeUUID = false) {
+        $retVal = false;
+        if ($this->isOnline()) {
+            if (array_key_exists('players', $this->serverInfo['decodedResponse']) && 
+                array_key_exists('sample', $this->serverInfo['decodedResponse']['players'])) {            
+                if ($includeUUID) {
+                    $retVal = $this->serverInfo['decodedResponse']['players']['sample'];
+                } else {
+                    $retVal = array();
+                    foreach($this->serverInfo['decodedResponse']['players']['sample'] as $player) {
+                        $retVal[] = $player['name'];
+                    }
+                }
+            }
+        }
+        return $retVal;
+    }       
+
+    /**
+     * @return string|bool  Base64 string of the server icon (can be used within src attribute of img tag)
+     */
+    public function getFavIcon() {
+        $retVal = false;
+        if ($this->isOnline()) {
+            if (array_key_exists('favicon', $this->serverInfo['decodedResponse'])) {            
+                $retVal = $this->serverInfo['decodedResponse']['favicon'];
+            }
+        }
+        return $retVal;
+    }    
+    
+    /**
+     * @return string|bool Max. Current count of player online on the server
+     */
+    public function getModType() {
+        $retVal = false;
+        if ($this->isOnline()) {
+            if (array_key_exists('modinfo', $this->serverInfo['decodedResponse']) && 
+                array_key_exists('type', $this->serverInfo['decodedResponse']['modinfo'])) {            
+                $retVal = $this->serverInfo['decodedResponse']['modinfo']['type'];
+            }
+        }
+        return $retVal;
+    }     
+    
+
+    /**
+     * @return array|bool Mods the server is using with its id ('modid') 
+     *                    and version ('version') (currently only Forge?!)
+     */
+    public function getModList() {
+        $retVal = false;
+        if ($this->isOnline()) {
+            if (array_key_exists('modinfo', $this->serverInfo['decodedResponse']) && 
+                array_key_exists('modList', $this->serverInfo['decodedResponse']['modinfo'])) {            
+                $retVal = $this->serverInfo['decodedResponse']['modinfo']['modList'];
+            }
+        }
+        return $retVal;
+    }       
+   
 }
