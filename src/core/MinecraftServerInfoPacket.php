@@ -46,18 +46,4 @@ abstract class MinecraftServerInfoPacket {
         }
         return $retVal;
     }    
-    
-    public static function buildHandshakeMessage ($ipAdress, $port, $protocolVersion) {
-        return self::packData(chr(0) .
-                              self::packVarInt($protocolVersion) .
-                              self::packData($ipAdress) .
-                              pack('n', (int) $port) .
-                              self::packVarInt(1)
-                );        
-    }
-    
-    public static function buildStatusRequestMessage () {
-        return MinecraftServerInfoPacket::packData(chr(0));
-    }
-   
 }

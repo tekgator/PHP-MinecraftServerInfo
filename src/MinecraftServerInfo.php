@@ -1,8 +1,7 @@
 <?php
 
-require_once 'core/MinecraftServerInfoConfig.php';
 require_once 'core/MinecraftServerInfoDns.php';
-require_once 'core/MinecraftServerInfoTcpPing.php';
+require_once 'core/MinecraftServerInfoTcpQuery.php';
 
 /**
  * MinecraftServerInfo
@@ -10,8 +9,7 @@ require_once 'core/MinecraftServerInfoTcpPing.php';
  * 
  * @author Patrick Weiss <info@tekgator.com> http://tekgator.com
  * @copyright (c) 2015, Patrick Weiss
- * @link http://wiki.vg/Server_List_Ping Protocol description
- * @version 1.2
+ * @version 1.3
  * 
  */
 class MinecraftServerInfo {
@@ -25,7 +23,7 @@ class MinecraftServerInfo {
 
     
     /**
-     * @param string $hostname Hostname:Port of minecraft server
+     * @param string $hostname Hostname[:Port] of minecraft server
      * @param string $port     Port of minecraft server 
      */
     public function __construct($hostname = '', $port = 0) {
@@ -36,8 +34,9 @@ class MinecraftServerInfo {
      * query or refresh minecraft server info
      * @return bool returns whether server is on/offline
      */
-    public function query() {
-        $mcQuery = new MinecraftServerInfoTcpPing($this->mcDns);
+    public function Query() {
+        
+        $mcQuery = new MinecraftServerInfoTcpQuery($this->mcDns);
         
         $this->serverInfo = ['isOnline'     => $mcQuery->isOnline(),
                              'response'     => $mcQuery->getResponse(),

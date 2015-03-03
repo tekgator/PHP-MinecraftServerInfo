@@ -13,7 +13,7 @@ require_once 'core/MinecraftServerInfoPacket.php';
  * @link http://wiki.vg/Server_List_Ping Protocol description
  * 
  */
-class MinecraftServerInfoTcpPing {
+class MinecraftServerInfoTcpQuery {
    
     private $isOnline = false;
     private $latency = 0;
@@ -25,38 +25,22 @@ class MinecraftServerInfoTcpPing {
         $this->refresh($mcDns);
     }
     
-    /**
-     * Returns whether the minecraft server is on/offline
-     * @return bool
-     */
     public function isOnline() {
         return $this->isOnline;
     }
 
-    /**
-     * Returns latency to minecraft server
-     * @return int
-     */
     public function getLatency() {
         return $this->latency;
     }
 
-    /**
-     * Returns the undecoded response of the minecraft server
-     * @return string
-     */    
     public function getResponse() {
         return $this->repsonse;
     }
 
-    /**
-     * In case the server is offline the last thrown error can be checked here
-     * @return string
-     */    
     public function getLastError() {
         return $this->lastError;
     }
-    
+
     public function refresh($mcDns) {
         $this->isOnline = false;
         $this->latency = 0;
@@ -73,23 +57,26 @@ class MinecraftServerInfoTcpPing {
             
             /* 2.) prepare handshake message (do before hand to not 
              *     increase latency time measurement to server) */
-            $handshakePacket = MinecraftServerInfoPacket::buildHandshakeMessage(
-                    $mcDns->getIPAdress(),
-                    $mcDns->getPort(),
-                    MinecraftServerInfoConfig::MINECRAFT_PROTOCOL_VERSION);
+            $handshakePacket = MinecraftServerInfoPacket::packData(
+                    chr(0) .
+                    MinecraftServerInfoPacket::packVarInt(MinecraftServerInfoConfig::MINECRAFT_PROTOCOL_VERSION) .
+                    MinecraftServerInfoPacket::packData($mcDns->getHostName()) .
+                    pack('n', $mcDns->getPort()) .
+                    MinecraftServerInfoPacket::packVarInt(1));
             
             /* 3.) prepare status request message */
-            $statusRequestPacket = MinecraftServerInfoPacket::buildStatusRequestMessage();
+            $statusRequestPacket = MinecraftServerInfoPacket::packData(chr(0));
             
             /* 4.) connect to minecraft server */
             $connectTime = microtime(true);
-            $fp = stream_socket_client('tcp://' . $mcDns->getIPAdress() . ':' . $mcDns->getPort(), 
+            $fp = stream_socket_client('tcp://' . $mcDns->getHostName() . ':' . $mcDns->getPort(), 
                                        $errNo, 
                                        $errMsg, 
-                                       MinecraftServerInfoConfig::TCP_TIMEOUT_SECONDS);
+                                       MinecraftServerInfoConfig::CONNECTION_TIMEOUT_SECONDS);
 
             if ($fp) {
-                stream_set_timeout($fp, MinecraftServerInfoConfig::TCP_TIMEOUT_SECONDS);
+                stream_set_blocking($fp, 1);
+                stream_set_timeout($fp, MinecraftServerInfoConfig::CONNECTION_TIMEOUT_SECONDS);
             } else {
                 $this->lastError = 'TCP connection failed, server maybe offline.' .
                         ' /hostName='   . $mcDns->getHostName() .

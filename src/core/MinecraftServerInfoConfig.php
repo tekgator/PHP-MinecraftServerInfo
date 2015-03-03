@@ -14,6 +14,7 @@ abstract class MinecraftServerInfoConfig {
     
     const MINECRAFT_PROTOCOL_VERSION    = 47;
 
-    const TCP_TIMEOUT_SECONDS           = 5;
+    const CONNECTION_TIMEOUT_SECONDS    = 5;
+    
     
 }
