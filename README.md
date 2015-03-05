@@ -11,13 +11,13 @@ PHP library to query information from a Minecraft server for Minecraft servers 1
 - Supports newest Minecraft server version 1.7 and higher
 - **NO** requirement for plugin, RCON or to enable Query on the server, it works straight out of the box on every Minecraft server.
 - Retrieves online player names (limited)
-- SVR record resolving: No need to know the exact port of the Minecraft server if a SVR record is configured
+- SRV record resolving: No need to know the exact port of the Minecraft server if a SRV record is configured
 
 
 
 ## How to use it
 
-Simply create an object of the class MinecraftServerInfo and pass the hostname and optionally the port. Via the magic methods server properties can be retrieved.
+Simply create an object of the class MinecraftServerInfoQueryTcp and pass the hostname and optionally the port. Via the magic methods server properties can be retrieved.
 
 ```php
 <?php
@@ -34,7 +34,7 @@ Simply create an object of the class MinecraftServerInfo and pass the hostname a
 ```
 
     
-## Properties to retriever server information
+## Properties to retrieve server information
 
 Magic get properties are **not** case sensitive. If a property is not available *FALSE* is retuned. 
 
@@ -42,9 +42,9 @@ Magic get properties are **not** case sensitive. If a property is not available 
 - **Response**: The decoded JSON stream returned from the Minecraft server 
 - **Error**: In case a error occured this property maybe filled
 <br />
-- **HostName**: Hostname of the server (maybe different from input due to SVR record resolving)
+- **HostName**: Hostname of the server (maybe different from input due to SRV record resolving)
 - **IPAdress**: IP adress of the server
-- **Port**: Port of the server (maybe gathered from the SVR record)
+- **Port**: Port of the server (maybe gathered from the SRV record)
 - **Latency**: Ping to the server im ms
 <br />
 - **FavIcon**: Server icon as base64 string which can be assigned to the src property of the HTML img tag
