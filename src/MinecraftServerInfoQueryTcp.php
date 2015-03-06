@@ -24,7 +24,7 @@ class MinecraftServerInfoQueryTcp {
                              'ipadress'     => $mcDns->getIPAdress(),
                              'port'         => $mcDns->getPort()];
         
-        $this->refresh();
+        $this->Refresh();
     }
 
     public function Refresh() {
@@ -58,12 +58,12 @@ class MinecraftServerInfoQueryTcp {
                 stream_set_blocking($fp, 1);
                 stream_set_timeout($fp, MinecraftServerInfoConfig::CONNECTION_TIMEOUT_SECONDS);
             } else {
-            $this->serverInfo['error'] = 'TCP connection failed, server maybe offline.' .
-                        ' /hostName='   . $this->serverInfo['hostname'] .
-                        ' /ipAdress='   . $this->serverInfo['ipadress'] .
-                        ' /port='       . $this->serverInfo['port'] .
-                        ' /errNo='      . $errNo .
-                        ' /errMsg='     . $errMsg;
+                $this->serverInfo['error'] = 'TCP connection failed, server maybe offline.' .
+                            ' /hostName='   . $this->serverInfo['hostname'] .
+                            ' /ipAdress='   . $this->serverInfo['ipadress'] .
+                            ' /port='       . $this->serverInfo['port'] .
+                            ' /errNo='      . $errNo .
+                            ' /errMsg='     . $errMsg;
                 break;
             }
             
