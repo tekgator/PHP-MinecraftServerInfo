@@ -51,7 +51,7 @@ Magic get properties are **not** case sensitive. If a property is not available 
 - **Description**: Message of the day
 - **PlayerMax**: Count of maximum possible players on the server
 - **PlayerOnline**: Count of current players on the server
-- **Players**: Array of players on the server with name and UUID (sample only is returned from the server, most likly around 10 - 15 players) 
+- **Players**: Array of players on the server with name and UUID (only a sample is returned from the server, most likly around 10 - 15 players) 
 - **ModInfo**: In case of a Forge server a mod list maybe returned
 
 
