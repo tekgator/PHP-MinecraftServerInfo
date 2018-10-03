@@ -40,7 +40,7 @@ Magic get properties are **not** case sensitive. If a property is not available 
 
 - **Online**: Indicates if the server is reachable
 - **Response**: The decoded JSON stream returned from the Minecraft server 
-- **Error**: In case a error occured this property maybe filled
+- **Error**: In case an error occured this property is filled
 - **HostName**: Hostname of the server (maybe different from input due to SRV record resolving)
 - **IPAdress**: IP adress of the server
 - **Port**: Port of the server (maybe gathered from the SRV record)
